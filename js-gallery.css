@@ -1,0 +1,25 @@
+.js-gallery-viewport {
+  box-sizing: border-box;
+  overflow: hidden;
+  touch-action: none;
+}
+
+.js-gallery-viewport>.js-gallery-container {
+  box-sizing: border-box;
+  width: 300%;
+  height: 100%;
+  display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  /* border: 1px solid red; */
+}
+
+.js-gallery-viewport>.js-gallery-container>img {
+  box-sizing: border-box;
+  width: calc(100% / 3);
+  height: 100%;
+  flex-grow: 0;
+  flex-shrink: 0;
+  object-fit: contain;
+  /* border: 1px solid greenyellow; */
+}

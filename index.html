@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Gallery</title>
+  <link rel="stylesheet" href="js-gallery.css">
+  <style>
+    body {
+      background-color: black;
+    }
+
+    #viewport {
+      position: fixed;
+      top: 0;
+      right: 0;
+      bottom: 0;
+      left: 0;
+      /* width: 500px;
+      height: 500px;
+      margin: auto;
+      border: 1px solid white; */
+    }
+  </style>
+</head>
+
+<body>
+  <div id="viewport"></div>
+
+  <script src="js-gallery.js"></script>
+  <script>
+    const temp = [
+      'm7m6h94kzym61.jpg',
+      'pxt1ur51jxw51.jpg',
+      'xabnyikhw8t51.jpg',
+      'isqaxk3968v51.jpg',
+      '8ljpcjxv7pa61.jpg',
+      'rpn906t6zux51.jpg',
+      'eyrv0ruaysl61.jpg',
+      '2453ccr622v51.jpg',
+      'n71DdfE.jpg',
+      '9zxmbog62xo51.jpg',
+      'yUE4e32.jpg',
+      'bkeib046e6p51.jpg',
+      '57mzuor1cyi61.jpg',
+      'dgo0pj0w0kz41.jpg',
+      'EXPWkfV.jpg',
+      '3024x4032_fefba5779a197fb4f577653e1a7dd421.jpg',
+      'riqc65ei9kp61.jpg',
+      'qsk4wynvhkn61.jpg',
+      'p5isjtatgnd61.jpg',
+      'rpvi74pv8xa61.jpg',
+      'hhqmo0n5dfe61.jpg',
+      'qxgfpllpfgk61.jpg',
+      'hf5pcci4mro61.jpg',
+      'zamumlr3vlo61.jpg',
+      '97d4chnfijm51.jpg',
+      'zz49efpzz5l51.jpg',
+      'moj1pprotmk61.jpg',
+      'iup2ibcuovv51.jpg',
+      'he10j44wghv51.jpg',
+      'ar4x7yuasfe61.jpg',
+      'EMA9r9E.jpg',
+      'szudrbw25vq51.jpg',
+      '41jmrxsez9s51.jpg',
+      '3lyeqpbsy9y51.jpg',
+      'wKpTxZN.jpg',
+      '2tqunzta3jo51.jpg',
+      'swaugeh6h2e61.jpg',
+      'vb2odrpnscn51.jpg',
+      'WWaJ3m0.jpg',
+      'bjt3mn50yah61.jpg',
+      '4rzf1cn9q9s51.jpg',
+      'u27tfmsjlaw51.jpg',
+      '8rwx9mie80k61.jpg',
+      'ej3is19v7c561.jpg',
+      'erus10zkdhv51.jpg',
+      'p7f2ayfybhk61.jpg',
+      'Faajr6U.jpg',
+      'ki6ws4byb3r51.jpg',
+      'mjgm7s7xqab61.jpg',
+      '6h5q856fqhp51.jpg',
+      'gumeg34htmk51.jpg',
+      'vseamibjyut51.jpg',
+      'ehy84nzgdgx51.jpg'
+    ];
+
+    class Main {
+      static run() {
+        new Gallery().init(document.querySelector('#viewport'), this.cb);
+      }
+
+      static cb(i) {
+        return temp[i] ? location.origin + '/image/' + temp[i] : null;
+      }
+    }
+
+    Main.run();
+  </script>
+</body>
+
+</html>
