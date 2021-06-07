@@ -28,8 +28,9 @@
 <body>
   <div id="viewport"></div>
 
-  <script src="js-gallery.js"></script>
-  <script>
+  <script type="module">
+    import { Gallery } from "./js-gallery.js";
+
     const temp = [
       'm7m6h94kzym61.jpg',
       'pxt1ur51jxw51.jpg',
@@ -92,7 +93,9 @@
       }
 
       static cb(i) {
-        return temp[i] ? location.origin + '/image/' + temp[i] : null;
+        // return temp[i] ? location.origin + '/image/' + temp[i] : null;
+        // return 'https://placeimg.com/320/240/any?' + Math.random();
+        return 'image.jpg';
       }
     }
 
