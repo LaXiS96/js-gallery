@@ -11,6 +11,20 @@
 
 // TODO handle media other than images (<video>, <audio>)
 
+/**
+ * @typedef {{
+ *  translateX?: number,
+ *  translateY?: number,
+ *  scale?: number
+ * }} Transforms
+ */
+
+/** @enum {number} */
+const State = {
+  Move: 1,
+  Zoom: 2,
+};
+
 export class Options {
   /**
    * Duration of transitions in milliseconds
@@ -45,14 +59,23 @@ export class Gallery {
   _container;
 
   /**
-   * Current CSS transform values
+   * Current container CSS transform values
+   * @type {Transforms}
    */
-  _transforms = {
-    translate: { x: 0, y: 0 },
-    scale: 1
-  };
+  _containerTransforms = {};
 
-  _state = StateEnum.Idle;
+  /**
+   * Current image CSS transform values
+   * @type {Transforms}
+   */
+  _imageTransforms = {};
+
+  /**
+   * Current gallery state
+   */
+  _state = State.Move;
+
+  _busy = false;
 
   /**
    * Index of current image for container translation
@@ -61,19 +84,18 @@ export class Gallery {
   _translateIndex = 0;
 
   /**
-   * Current tracked pointer down events (for gestures)
-   * @type {PointerEvent[]}
+   * Current tracked pointer events (for gestures)
+   * @type {{ [id: string]: {
+   *  downEvent: PointerEvent,
+   *  moveEvent: PointerEvent,
+   *  containerTransforms: Transforms,
+   *  imageTransforms: Transforms
+   * } }}
    */
-  _pointerDownEvents = [];
+  _pointers = {};
 
-  /**
-   * Current tracked pointer move events (for gestures)
-   * @type {PointerEvent[]}
-   */
-  _pointerMoveEvents = [];
-
-  /** @type {PointerEvent} */
-  _lastPrimaryPointerDown;
+  /** @type {PointerEvent?} */
+  _lastPrimaryPointerDown = null;
 
   _lastZoomDist = 0;
 
@@ -90,12 +112,11 @@ export class Gallery {
   _callback;
 
   /**
-   * Initialize gallery
    * @param {HTMLElement} viewportElement
    * @param {getImageUrlCallback} getImageUrlCallback
    * @param {Options} options
    */
-  init(viewportElement, getImageUrlCallback, options) {
+  constructor(viewportElement, getImageUrlCallback, options) {
     if (!viewportElement)
       throw new Error('Invalid viewport element: ' + viewportElement);
     if (!getImageUrlCallback)
@@ -144,7 +165,7 @@ export class Gallery {
    * @param {'prev'|'next'} direction
    */
   move(direction) {
-    if (this._busy) // TODO replace _busy with _state
+    if (this._busy)
       return;
 
     if (direction === 'prev') {
@@ -198,9 +219,9 @@ export class Gallery {
    */
   _translate(direction, animate) {
     this._translateIndex += direction === 'next' ? -1 : direction === 'prev' ? +1 : 0;
-    this._transforms.translate.x = this._translateIndex * (this._container.clientWidth / 3);
-    this._transforms.translate.y = 0;
-    this._applyTransforms(animate);
+    this._containerTransforms.translateX = this._translateIndex * (this._container.clientWidth / 3);
+    this._containerTransforms.translateY = 0;
+    this._applyTransforms(this._container, this._containerTransforms, animate);
   }
 
   /**
@@ -209,11 +230,11 @@ export class Gallery {
    * @param {number} yAmount number of pixels to translate by on the Y axis
    * @param {boolean} animate
    */
-  _translatePx(xAmount, yAmount, animate) {
-    this._transforms.translate.x += xAmount;
-    this._transforms.translate.y += yAmount;
-    this._applyTransforms(animate);
-  }
+  // _translatePx(xAmount, yAmount, animate) {
+  //   this._containerTransforms.translateX = (this._containerTransforms.translateX || 0) + xAmount;
+  //   this._containerTransforms.translateY = (this._containerTransforms.translateY || 0) + yAmount;
+  //   this._applyTransforms(this._container, this._containerTransforms, animate);
+  // }
 
   /**
    * Get previous/current/next image to display
@@ -226,14 +247,16 @@ export class Gallery {
   }
 
   /**
-   * Apply CSS transforms as specified in `_transforms`
-   * @param {boolean} animate whether to animate the transition
+   * Apply CSS transforms to Element
+   * @param {HTMLElement} element
+   * @param {Transforms} transforms
+   * @param {boolean} animate
    */
-  _applyTransforms(animate) {
-    this._container.style.transition = animate ? `transform ${this.options.transitionDuration}ms` : '';
-    this._container.style.transform =
-      `translate(${this._transforms.translate.x || 0}px, ${this._transforms.translate.y || 0}px) ` +
-      `scale(${this._transforms.scale || 1})`;
+  _applyTransforms(element, transforms, animate) {
+    element.style.transition = animate ? `transform ${this.options.transitionDuration}ms` : '';
+    element.style.transform =
+      `translate(${transforms.translateX || 0}px, ${transforms.translateY || 0}px) ` +
+      `scale(${transforms.scale || 1})`;
   }
 
   /**
@@ -252,24 +275,28 @@ export class Gallery {
       if (this._lastPrimaryPointerDown) {
         const d = ev.timeStamp - this._lastPrimaryPointerDown.timeStamp;
         if (d <= 300) {
-          if (this._state === StateEnum.Idle) {
-            this._transforms.scale = 2;
-            this._state = StateEnum.Zoom;
-          } else if (this._state === StateEnum.Zoom) {
-            this._transforms.scale = 1;
-            this._state = StateEnum.Idle;
+          if (this._state === State.Move) {
+            this._imageTransforms.scale = 2;
+            this._state = State.Zoom;
+          } else if (this._state === State.Zoom) {
+            this._imageTransforms.scale = 1;
+            this._imageTransforms.translateX = 0;
+            this._imageTransforms.translateY = 0;
+            this._state = State.Move;
           }
-
-          this._applyTransforms(true);
-          this._translate('curr', true);
+          this._applyTransforms(this._container.children.item(1), this._imageTransforms, true);
         }
       }
       this._lastPrimaryPointerDown = ev;
     }
 
-    this._pointerDownEvents.push(ev);
-    this._pointerMoveEvents.push(ev);
-    if (this._pointerDownEvents.length === 1) {
+    this._pointers[ev.pointerId] = {
+      downEvent: ev,
+      moveEvent: ev,
+      containerTransforms: Object.assign({}, this._containerTransforms),
+      imageTransforms: Object.assign({}, this._imageTransforms)
+    };
+    if (Object.keys(this._pointers).length === 1) {
       document.addEventListener('pointerup', this._pointerUpHandler);
       document.addEventListener('pointercancel', this._pointerCancelHandler);
       document.addEventListener('pointermove', this._pointerMoveHandler);
@@ -283,29 +310,22 @@ export class Gallery {
     // console.log(ev.pointerId, ev);
     // ev.preventDefault();
 
-    // TODO should check pointerId?
-
-    if (this._pointerDownEvents.length === 1) {
-      if (this._state === StateEnum.Idle) {
-        const delta = ev.x - this._pointerDownEvents[0].x;
+    if (Object.keys(this._pointers).length === 1) {
+      if (this._state === State.Move) {
+        const delta = ev.x - this._pointers[ev.pointerId].downEvent.x;
         if (delta > 0)
           this.move('prev');
         else if (delta < 0)
           this.move('next');
       }
-    } else if (this._pointerDownEvents.length === 2) {
+    } else if (Object.keys(this._pointers).length === 2) {
       // TODO
     }
 
-    let i = this._pointerDownEvents.findIndex(e => e.pointerId === ev.pointerId);
-    if (i !== -1)
-      this._pointerDownEvents.splice(i, 1);
+    if (this._pointers[ev.pointerId])
+      delete this._pointers[ev.pointerId];
 
-    i = this._pointerMoveEvents.findIndex(e => e.pointerId === ev.pointerId);
-    if (i !== -1)
-      this._pointerMoveEvents.splice(i, 1);
-
-    if (this._pointerDownEvents.length === 0) {
+    if (Object.keys(this._pointers).length === 0) {
       document.removeEventListener('pointerup', this._pointerUpHandler);
       document.removeEventListener('pointercancel', this._pointerCancelHandler);
       document.removeEventListener('pointermove', this._pointerMoveHandler);
@@ -320,68 +340,72 @@ export class Gallery {
     // console.log(ev.pointerId, ev);
     // ev.preventDefault();
 
+    this._pointers = {};
     document.removeEventListener('pointerup', this._pointerUpHandler);
     document.removeEventListener('pointercancel', this._pointerCancelHandler);
     document.removeEventListener('pointermove', this._pointerMoveHandler);
-
-    this._pointerDownEvents = [];
-    this._pointerMoveEvents = [];
   };
 
   /**
    * @param {PointerEvent} ev
    */
   _pointerMoveHandler = (ev) => {
-    // console.log('pointerId', ev.pointerId, '_pointerMoveEvents.length', this._pointerMoveEvents.length, ev.pointerType);
+    // console.log('pointermove', ev.pointerId, ev);
     // ev.preventDefault();
 
-    // console.log('_pointerMoveEvents', this._pointerMoveEvents.length);
-    if (this._pointerMoveEvents.length === 1) {
-      if (this._state === StateEnum.Idle) {
-        this._translatePx(ev.x - this._pointerMoveEvents[0].x, 0, false);
-      } else if (this._state === StateEnum.Zoom) {
-        // TODO pan within current image bounds (remember: CSS scale does not change px values)
-        this._translatePx(ev.x - this._pointerMoveEvents[0].x, ev.y - this._pointerMoveEvents[0].y, false);
-      }
-    } else if (this._pointerMoveEvents.length === 2) {
-      this._state = StateEnum.Zoom;
+    if (Object.keys(this._pointers).length === 1) {
+      if (this._state === State.Move) {
+        this._containerTransforms.translateX = (this._pointers[ev.pointerId].containerTransforms.translateX || 0)
+          + ev.x - this._pointers[ev.pointerId].downEvent.x;
+        this._applyTransforms(this._container, this._containerTransforms, false);
+      } else if (this._state === State.Zoom) {
+        // Calculate pixel size of contained image
+        let imageWidth = 0;
+        let imageHeight = 0;
+        const imageAspect = this._container.children.item(1).naturalWidth / this._container.children.item(1).naturalHeight;
+        const viewportAspect = this._viewport.clientWidth / this._viewport.clientHeight;
+        if (imageAspect >= viewportAspect) {
+          imageWidth = this._viewport.clientWidth;
+          imageHeight = this._viewport.clientWidth / imageAspect;
+        } else {
+          imageWidth = this._viewport.clientHeight * imageAspect;
+          imageHeight = this._viewport.clientHeight;
+        }
 
-      const p1 = this._pointerMoveEvents[0];
-      const p2 = this._pointerMoveEvents[1];
+        // Calculate translation limits to keep image inside the viewport
+        const xMax = Math.abs((this._viewport.clientWidth - imageWidth * (this._imageTransforms.scale || 1)) / 2);
+        const yMax = Math.abs((this._viewport.clientHeight - imageHeight * (this._imageTransforms.scale || 1)) / 2);
+
+        const xDelta = (this._pointers[ev.pointerId].imageTransforms.translateX || 0)
+          + ev.x - this._pointers[ev.pointerId].downEvent.x;
+        this._imageTransforms.translateX = Utils.clamp(xDelta, -xMax, xMax);
+
+        const yDelta = (this._pointers[ev.pointerId].imageTransforms.translateY || 0)
+          + ev.y - this._pointers[ev.pointerId].downEvent.y;
+        this._imageTransforms.translateY = Utils.clamp(yDelta, -yMax, yMax);
+
+        // console.log('zoom', xDelta, yDelta);
+        this._applyTransforms(this._container.children.item(1), this._imageTransforms, false);
+      }
+    } else if (Object.keys(this._pointers).length === 2) {
+      this._state = State.Zoom;
+
+      const p1 = Object.values(this._pointers)[0].moveEvent;
+      const p2 = Object.values(this._pointers)[1].moveEvent;
       const dist = Math.sqrt(Math.pow(p2.x - p1.x, 2) + Math.pow(p2.y - p1.y, 2));
       // console.log('move', p1.x, p1.y, p2.x, p2.y, dist);
       if (this._lastZoomDist !== 0) {
-        this._transforms.scale *= dist / this._lastZoomDist;
-        if (this._transforms.scale < 1)
-          this._transforms.scale = 1;
+        this._imageTransforms.scale = (this._imageTransforms.scale || 1) * dist / this._lastZoomDist;
+        if (this._imageTransforms.scale < 1)
+          this._imageTransforms.scale = 1;
         // console.log('scale', this._lastZoomDist, dist, this._transforms.scale);
-        this._applyTransforms(false);
+        this._applyTransforms(this._container.children.item(1), this._imageTransforms, false);
       }
       this._lastZoomDist = dist;
     }
 
-    const i = this._pointerMoveEvents.findIndex(e => e.pointerId === ev.pointerId);
-    if (i !== -1)
-      this._pointerMoveEvents[i] = ev;
-    else
-      this._pointerMoveEvents.push(ev);
+    this._pointers[ev.pointerId].moveEvent = ev;
   };
-}
-
-class StateEnum {
-  static Idle = new StateEnum('idle', 1);
-  static Zoom = new StateEnum('zoom', 2);
-
-  // TODO order
-
-  /**
-   * @param {string} name
-   * @param {number} order
-   */
-  constructor(name, order) {
-    this.name = name;
-    this.order = order;
-  }
 }
 
 class Utils {
@@ -397,5 +421,15 @@ class Utils {
     else
       img.style.visibility = 'hidden';
     return img;
+  }
+
+  /**
+   * Clamp number val to min-max range
+   * @param {number} val
+   * @param {number} min
+   * @param {number} max
+   */
+  static clamp(val, min, max) {
+    return Math.min(Math.max(val, min), max);
   }
 }
