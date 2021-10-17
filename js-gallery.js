@@ -1,3 +1,5 @@
+// TODO check issue when quickly click+dragging or swiping to change images faster than animation
+
 // TODO image caching: let the browser do its thing (simply set img.src as needed)
 // or do something else (maybe keeping image elements in memory avoids multiple decodings)
 
