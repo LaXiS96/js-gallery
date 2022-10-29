@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        #box {
+            width: 200px;
+            height: 200px;
+            background-color: red;
+            transition: transform 2s;
+        }
+
+        #box.test {
+            transform: translateX(500px);
+        }
+    </style>
+</head>
+
+<body>
+    <div id="box"></div>
+    <script>
+        const box = document.getElementById('box');
+        const startDate = new Date();
+
+        box.addEventListener('transitionstart', (ev) => console.log(ev, new Date() - startDate));
+        box.addEventListener('transitionend', (ev) => console.log(ev, new Date() - startDate));
+        box.addEventListener('transitioncancel', (ev) => console.log(ev, new Date() - startDate));
+
+        setTimeout(() => {
+            console.log('test', new Date() - startDate);
+            box.classList.add('test');
+            setTimeout(() => {
+                console.log('break', new Date() - startDate);
+                box.classList.remove('test');
+            }, 1000);
+        }, 1000);
+    </script>
+</body>
+
+</html>

@@ -13,10 +13,24 @@
 
 /**
  * @typedef {{
- *  translateX?: number,
- *  translateY?: number,
- *  scale?: number
+ *  translateX: number,
+ *  translateY: number,
+ *  scale: number
  * }} Transforms
+ */
+
+/**
+ * Called when an action completes
+ * @callback CompleteFn
+ * @param {boolean} canceled `true` if the action was aborted
+ * @returns {void}
+ */
+
+/**
+ * Called to retrieve an image URL, based on the current relative index
+ * @callback GetImageUrlFn
+ * @param {number} index relative index of requested image
+ * @returns {string} URL; falsy value indicates no image to display
  */
 
 /** @enum {number} */
@@ -42,6 +56,9 @@ export class Options {
 
 export class Gallery {
 
+  /** @type {GetImageUrlFn} */
+  _getImageUrlFn;
+
   /** @type {Options} */
   options = new Options;
 
@@ -55,20 +72,8 @@ export class Gallery {
   /** @type {HTMLElement} */
   _viewport;
 
-  /** @type {HTMLDivElement} */
+  /** @type {GalleryContainer} */
   _container;
-
-  /**
-   * Current container CSS transform values
-   * @type {Transforms}
-   */
-  _containerTransforms = {};
-
-  /**
-   * Current image CSS transform values
-   * @type {Transforms}
-   */
-  _imageTransforms = {};
 
   /**
    * Current gallery state
@@ -78,185 +83,63 @@ export class Gallery {
   _busy = false;
 
   /**
-   * Index of current image for container translation
-   * @type {number}
-   */
-  _translateIndex = 0;
-
-  /**
-   * Current tracked pointer events (for gestures)
+   * Current tracked pointers events (for gestures)
    * @type {{ [id: string]: {
    *  downEvent: PointerEvent,
    *  moveEvent: PointerEvent,
-   *  containerTransforms: Transforms,
-   *  imageTransforms: Transforms
+   *  transforms: any,
    * } }}
    */
   _pointers = {};
 
   /** @type {PointerEvent?} */
-  _lastPrimaryPointerDown = null;
+  _lastPointerUp = null;
 
   _lastZoomDist = 0;
 
   /**
-   * Callback for retrieving the image URL based on the relative index
-   * @callback getImageUrlCallback
-   * @param {number} index relative index of requested image
-   * @returns {string} URL; falsy value indicates no image to display
-   */
-
-  /**
-   * @type {getImageUrlCallback}
-   */
-  _callback;
-
-  /**
-   * @param {HTMLElement} viewportElement
-   * @param {getImageUrlCallback} getImageUrlCallback
+   * @param {HTMLElement} viewport
+   * @param {GetImageUrlFn} getImageUrlFn
    * @param {Options} options
    */
-  constructor(viewportElement, getImageUrlCallback, options) {
-    if (!viewportElement)
-      throw new Error('Invalid viewport element: ' + viewportElement);
-    if (!getImageUrlCallback)
-      throw new Error('Invalid getImageUrlCallback: ' + getImageUrlCallback);
+  constructor(viewport, getImageUrlFn, options) {
+    if (!viewport)
+      throw new Error('Invalid viewport element: ' + viewport);
+    if (!getImageUrlFn)
+      throw new Error('Invalid getImageUrlFn: ' + getImageUrlFn);
 
     if (options)
       Object.assign(this.options, options);
 
-    this._callback = getImageUrlCallback;
+    this._getImageUrlFn = getImageUrlFn;
 
-    this._viewport = viewportElement;
-    this._viewport.classList.add('js-gallery-viewport');
-    this._viewport.tabIndex = -1; // Make the viewport focusable to listen for keyboard events
+    viewport.classList.add('js-gallery-viewport');
+    viewport.tabIndex = -1; // Make the viewport focusable to listen for keyboard events
+    this._viewport = viewport;
 
-    this._container = document.createElement('div');
-    this._container.classList.add('js-gallery-container');
-
-    // Container must always contain 3 images
-    this._container.append(
-      Utils.newImage(this._getImageUrl('prev')),
-      Utils.newImage(this._getImageUrl('curr')),
-      Utils.newImage(this._getImageUrl('next'))
-    );
-    this._viewport.append(this._container);
-
-    // Start from the middle image
-    this._translate('next', false);
+    this._container = new GalleryContainer(this._viewport);
+    this._container.setImageUrl(-1, this._getImageUrlFn(-1));
+    this._container.setImageUrl(0, this._getImageUrlFn(0));
+    this._container.setImageUrl(+1, this._getImageUrlFn(+1));
 
     this._viewport.addEventListener('keydown', (ev) => {
-      switch (ev.key) {
-        case 'ArrowLeft':
-          // ev.preventDefault();
-          this.move('prev');
-          break;
-        case 'ArrowRight':
-          // ev.preventDefault();
-          this.move('next');
-          break;
+      let dir = 0;
+      if (ev.key === 'ArrowLeft')
+        dir = -1;
+      else if (ev.key === 'ArrowRight')
+        dir = +1;
+
+      if (dir !== 0 && !this._busy) {
+        this._busy = true;
+        this._container.slide(dir, this._getImageUrlFn(this.imageIndex + (dir * 2)),
+          (canceled) => {
+            if (!canceled)
+              this.imageIndex += dir;
+            this._busy = false;
+          });
       }
     });
-    this._viewport.addEventListener('pointerdown', this._pointerDownHandler);
-  }
-
-  /**
-   * Move viewport to previous/next image
-   * @param {'prev'|'next'} direction
-   */
-  move(direction) {
-    if (this._busy)
-      return;
-
-    if (direction === 'prev') {
-      this._busy = true;
-
-      // Do not move if there is no image to show
-      if (!this._container.firstElementChild.src) {
-        this._translate('curr', true); // Reset any pointer moves
-        setTimeout(() => {
-          this._busy = false;
-        }, this.options.transitionDuration);
-        return;
-      }
-
-      this.imageIndex--;
-      this._container.removeChild(this._container.lastElementChild);
-      this._translate('prev', true);
-      setTimeout(() => {
-        this._container.prepend(Utils.newImage(this._getImageUrl(direction)));
-        this._translate('next', false);
-        this._busy = false;
-      }, this.options.transitionDuration);
-    } else if (direction === 'next') {
-      this._busy = true;
-
-      // Do not move if there is no image to show
-      if (!this._container.lastElementChild.src) {
-        this._translate('curr', true); // Reset any pointer moves
-        setTimeout(() => {
-          this._busy = false;
-        }, this.options.transitionDuration);
-        return;
-      }
-
-      this.imageIndex++;
-      this._container.append(Utils.newImage(this._getImageUrl(direction)));
-      this._translate('next', true);
-      setTimeout(() => {
-        this._container.removeChild(this._container.firstElementChild);
-        this._translate('prev', false);
-        this._busy = false;
-      }, this.options.transitionDuration);
-    } else
-      throw new Error(`Invalid direction '${direction}'`);
-  }
-
-  /**
-   * Translate the image container horizontally, snapping to image boundaries
-   * @param {'prev'|'curr'|'next'} direction
-   * @param {boolean} animate
-   */
-  _translate(direction, animate) {
-    this._translateIndex += direction === 'next' ? -1 : direction === 'prev' ? +1 : 0;
-    this._containerTransforms.translateX = this._translateIndex * (this._container.clientWidth / 3);
-    this._containerTransforms.translateY = 0;
-    this._applyTransforms(this._container, this._containerTransforms, animate);
-  }
-
-  /**
-   * Translate the image container by the given pixel amounts
-   * @param {number} xAmount number of pixels to translate by on the X axis
-   * @param {number} yAmount number of pixels to translate by on the Y axis
-   * @param {boolean} animate
-   */
-  // _translatePx(xAmount, yAmount, animate) {
-  //   this._containerTransforms.translateX = (this._containerTransforms.translateX || 0) + xAmount;
-  //   this._containerTransforms.translateY = (this._containerTransforms.translateY || 0) + yAmount;
-  //   this._applyTransforms(this._container, this._containerTransforms, animate);
-  // }
-
-  /**
-   * Get previous/current/next image to display
-   * @param {'prev'|'curr'|'next'} direction
-   * @returns {string} URL
-   */
-  _getImageUrl(direction) {
-    const i = this.imageIndex + (direction === 'next' ? +1 : direction === 'prev' ? -1 : 0);
-    return this._callback(i);
-  }
-
-  /**
-   * Apply CSS transforms to Element
-   * @param {HTMLElement} element
-   * @param {Transforms} transforms
-   * @param {boolean} animate
-   */
-  _applyTransforms(element, transforms, animate) {
-    element.style.transition = animate ? `transform ${this.options.transitionDuration}ms` : '';
-    element.style.transform =
-      `translate(${transforms.translateX || 0}px, ${transforms.translateY || 0}px) ` +
-      `scale(${transforms.scale || 1})`;
+    // this._viewport.addEventListener('pointerdown', this._pointerDownHandler);
   }
 
   /**
@@ -276,15 +159,16 @@ export class Gallery {
         const d = ev.timeStamp - this._lastPrimaryPointerDown.timeStamp;
         if (d <= 300) {
           if (this._state === State.Move) {
-            this._imageTransforms.scale = 2;
+            this._transforms.image.scale = 2;
             this._state = State.Zoom;
           } else if (this._state === State.Zoom) {
-            this._imageTransforms.scale = 1;
-            this._imageTransforms.translateX = 0;
-            this._imageTransforms.translateY = 0;
+            this._transforms.image.scale = 1;
+            this._transforms.image.translate.x = 0;
+            this._transforms.image.translate.y = 0;
             this._state = State.Move;
           }
-          this._applyTransforms(this._container.children.item(1), this._imageTransforms, true);
+          this._transforms.image.animate = true;
+          this._applyTransforms();
         }
       }
       this._lastPrimaryPointerDown = ev;
@@ -293,8 +177,7 @@ export class Gallery {
     this._pointers[ev.pointerId] = {
       downEvent: ev,
       moveEvent: ev,
-      containerTransforms: Object.assign({}, this._containerTransforms),
-      imageTransforms: Object.assign({}, this._imageTransforms)
+      transforms: Utils.clone(this._transforms),
     };
     if (Object.keys(this._pointers).length === 1) {
       document.addEventListener('pointerup', this._pointerUpHandler);
@@ -355,10 +238,13 @@ export class Gallery {
 
     if (Object.keys(this._pointers).length === 1) {
       if (this._state === State.Move) {
-        this._containerTransforms.translateX = (this._pointers[ev.pointerId].containerTransforms.translateX || 0)
+        // TODO saving containerTransforms breaks when swiping quickly
+        this._transforms.container.translate.x = (this._pointers[ev.pointerId].transforms.container.translate.x || 0)
           + ev.x - this._pointers[ev.pointerId].downEvent.x;
-        this._applyTransforms(this._container, this._containerTransforms, false);
+        this._transforms.image.animate = true;
+        this._applyTransforms();
       } else if (this._state === State.Zoom) {
+        // TODO move outside handler and update on viewport resize
         // Calculate pixel size of contained image
         let imageWidth = 0;
         let imageHeight = 0;
@@ -373,19 +259,21 @@ export class Gallery {
         }
 
         // Calculate translation limits to keep image inside the viewport
-        const xMax = Math.abs((this._viewport.clientWidth - imageWidth * (this._imageTransforms.scale || 1)) / 2);
-        const yMax = Math.abs((this._viewport.clientHeight - imageHeight * (this._imageTransforms.scale || 1)) / 2);
+        const xMax = Math.abs((this._viewport.clientWidth - imageWidth * (this._transforms.image.scale || 1)) / 2);
+        const yMax = Math.abs((this._viewport.clientHeight - imageHeight * (this._transforms.image.scale || 1)) / 2);
 
-        const xDelta = (this._pointers[ev.pointerId].imageTransforms.translateX || 0)
+        // TODO transforms clone is probably shallow
+        const xDelta = (this._pointers[ev.pointerId].transforms.image.translate.x || 0)
           + ev.x - this._pointers[ev.pointerId].downEvent.x;
-        this._imageTransforms.translateX = Utils.clamp(xDelta, -xMax, xMax);
+        this._transforms.image.translate.x = Utils.clamp(xDelta, -xMax, xMax);
 
-        const yDelta = (this._pointers[ev.pointerId].imageTransforms.translateY || 0)
+        const yDelta = (this._pointers[ev.pointerId].transforms.image.translate.y || 0)
           + ev.y - this._pointers[ev.pointerId].downEvent.y;
-        this._imageTransforms.translateY = Utils.clamp(yDelta, -yMax, yMax);
+        this._transforms.image.translate.y = Utils.clamp(yDelta, -yMax, yMax);
 
         // console.log('zoom', xDelta, yDelta);
-        this._applyTransforms(this._container.children.item(1), this._imageTransforms, false);
+        this._transforms.image.animate = false;
+        this._applyTransforms();
       }
     } else if (Object.keys(this._pointers).length === 2) {
       this._state = State.Zoom;
@@ -395,11 +283,12 @@ export class Gallery {
       const dist = Math.sqrt(Math.pow(p2.x - p1.x, 2) + Math.pow(p2.y - p1.y, 2));
       // console.log('move', p1.x, p1.y, p2.x, p2.y, dist);
       if (this._lastZoomDist !== 0) {
-        this._imageTransforms.scale = (this._imageTransforms.scale || 1) * dist / this._lastZoomDist;
-        if (this._imageTransforms.scale < 1)
-          this._imageTransforms.scale = 1;
+        this._transforms.image.scale = (this._transforms.image.scale || 1) * dist / this._lastZoomDist;
+        if (this._transforms.image.scale < 1)
+          this._transforms.image.scale = 1;
+        this._transforms.image.animate = false;
         // console.log('scale', this._lastZoomDist, dist, this._transforms.scale);
-        this._applyTransforms(this._container.children.item(1), this._imageTransforms, false);
+        this._applyTransforms();
       }
       this._lastZoomDist = dist;
     }
@@ -408,21 +297,175 @@ export class Gallery {
   };
 }
 
-class Utils {
+class GalleryElement {
+
+  /** @type {HTMLElement} */
+  element;
+
+  /** @type {Transforms} */
+  transforms;
+
   /**
-   * Create a new HTMLImageElement for the given URL
-   * @param {string} url
-   * @returns {HTMLImageElement}
+   * Called once when next transition ends or is canceled
+   * @protected @type {CompleteFn?} 
    */
-  static newImage(url) {
-    const img = new Image();
-    if (url)
-      img.src = url;
-    else
-      img.style.visibility = 'hidden';
-    return img;
+  _transitionCompleteFn = null;
+
+  /** @param {HTMLElement} element */
+  constructor(element) {
+    this.element = element;
+    this.transforms = {
+      translateX: 0,
+      translateY: 0,
+      scale: 1
+    };
+    this.element.addEventListener('transitionstart', ev => {
+      // console.log(ev);
+    });
+    this.element.addEventListener('transitionend', ev => {
+      // console.log(ev);
+      if (this._transitionCompleteFn) {
+        this._transitionCompleteFn(false);
+        this._transitionCompleteFn = null;
+      }
+    });
+    this.element.addEventListener('transitioncancel', ev => {
+      // console.log(ev);
+      if (this._transitionCompleteFn) {
+        this._transitionCompleteFn(true);
+        this._transitionCompleteFn = null;
+      }
+    });
   }
 
+  /** @param {boolean} transition */
+  applyTransforms(transition) {
+    // console.log(this.transforms);
+    this.element.style.transition = transition ? `transform 250ms` : '';
+    this.element.style.transform =
+      `translate(${this.transforms.translateX || 0}px, ${this.transforms.translateY || 0}px) ` +
+      `scale(${this.transforms.scale || 1})`;
+  }
+}
+
+class GalleryContainer extends GalleryElement {
+
+  /** @private @type {GalleryImage[]} */
+  _images;
+
+  /** @param {HTMLElement} parent */
+  constructor(parent) {
+    super(document.createElement('div'));
+    this.element.classList.add('js-gallery-container');
+    parent.append(this.element);
+
+    this._images = [
+      new GalleryImage(''),
+      new GalleryImage(''),
+      new GalleryImage(''),
+    ];
+    this.element.append(...this._images.map(i => i.element));
+
+    this.transforms.translateX = -1 * (this.element.clientWidth / 3);
+    this.transforms.translateY = 0;
+    this.applyTransforms(false);
+  }
+
+  /**
+   * @param {number} index previous: `-1`, current: `0`, next: `+1`
+   * @param {string} url
+   */
+  setImageUrl(index, url) {
+    this._images[index + 1].setUrl(url);
+  }
+
+  /**
+   * @param {number} index previous: `-1`, next: `+1`
+   * @param {string} newUrl url of image to preload
+   * @param {CompleteFn} completeFn called when the slide finishes
+   */
+  slide(index, newUrl, completeFn) {
+    if (index === -1) {
+      if (this._images[0].isEmpty) {
+        // TODO reset to current image for gestures
+        completeFn(true);
+        return;
+      }
+
+      this.transforms.translateX = 0;
+      this.transforms.translateY = 0;
+      this.applyTransforms(true);
+
+      this._transitionCompleteFn = (/** @type {boolean} */ canceled) => {
+        this._images.unshift(new GalleryImage(newUrl));
+        this.element.prepend(this._images[0].element);
+
+        this.transforms.translateX = -1 * (this.element.clientWidth / 3);
+        this.transforms.translateY = 0;
+        this.applyTransforms(false);
+
+        this._images.pop();
+        // @ts-ignore
+        this.element.removeChild(this.element.lastElementChild);
+
+        completeFn(canceled);
+      };
+    } else if (index === +1) {
+      if (this._images[2].isEmpty) {
+        // TODO reset to current image for gestures
+        completeFn(true);
+        return;
+      }
+
+      this.transforms.translateX = -2 * (this.element.clientWidth / 3);
+      this.transforms.translateY = 0;
+      this.applyTransforms(true);
+
+      this._transitionCompleteFn = (/** @type {boolean} */ canceled) => {
+        this._images.shift();
+        // @ts-ignore
+        this.element.removeChild(this.element.firstElementChild);
+
+        this.transforms.translateX = -1 * (this.element.clientWidth / 3);
+        this.transforms.translateY = 0;
+        this.applyTransforms(false);
+
+        this._images.push(new GalleryImage(newUrl));
+        this.element.append(this._images[2].element);
+
+        completeFn(canceled);
+      };
+    } else
+      throw new Error(`Invalid index '${index}'`);
+  }
+}
+
+class GalleryImage extends GalleryElement {
+
+  isEmpty = true;
+
+  /** @param {string} url */
+  constructor(url) {
+    super(new Image());
+    /** @type {HTMLImageElement} */ this.element;
+    this.setUrl(url);
+  }
+
+  /** @param {string} url */
+  setUrl(url) {
+    if (url) {
+      this.element.src = url;
+      this.isEmpty = false;
+      this.element.style.visibility = '';
+    } else {
+      this.element.src = '';
+      this.isEmpty = true;
+      this.element.style.visibility = 'hidden';
+    }
+  }
+}
+
+class Utils {
   /**
    * Clamp number val to min-max range
    * @param {number} val
@@ -431,5 +474,13 @@ class Utils {
    */
   static clamp(val, min, max) {
     return Math.min(Math.max(val, min), max);
+  }
+
+  /**
+   * Deep clone a simple object
+   * @param {object} obj
+   */
+  static clone(obj) {
+    return JSON.parse(JSON.stringify(obj));
   }
 }

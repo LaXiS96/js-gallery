@@ -12,15 +12,16 @@
     }
 
     #viewport {
-      position: fixed;
+      /* position: fixed;
       top: 0;
       right: 0;
       bottom: 0;
-      left: 0;
-      /* width: 500px;
+      left: 0; */
+      width: 500px;
       height: 500px;
       margin: auto;
-      border: 1px solid white; */
+      overflow: visible !important;
+      border: 1px solid white;
     }
   </style>
 </head>
@@ -87,6 +88,8 @@
       'ehy84nzgdgx51.jpg'
     ];
 
+    const dev = ['image1.jpg', 'image2.jpg', 'image3.jpg'];
+
     class Main {
       static run() {
         new Gallery(document.querySelector('#viewport'), this.cb);
@@ -95,7 +98,7 @@
       static cb(i) {
         // return temp[i] ? location.origin + '/image/' + temp[i] : null;
         // return 'https://placeimg.com/320/240/any?' + Math.random();
-        return 'image.jpg';
+        return dev[i];
       }
     }
 
