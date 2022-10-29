@@ -1,0 +1,27 @@
+gesture detector only handles pointer events and detects gestures
+gallery then interprets those gestures based on its state
+
+use requestAnimationFrame for efficiency
+
+can we use the concept of "ongoing gesture" for the drag/swipe gesture?
+
+Gestures: 
+- TAP
+    primary down
+    primary up within 300ms
+- LONG PRESS
+    primary down for at least 300ms
+    primary up (ignore)
+- DOUBLE TAP
+    primary down
+    primary up
+    primary down within 300ms
+    primary up
+- DRAG [THIS NEEDS TO BE HANDLED IN REAL TIME]
+    primary down
+    primary move
+    primary up
+- PINCH [INCLUDE TOLERANCE]
+    2x down
+    2x move
+    2x up

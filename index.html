@@ -29,25 +29,34 @@
   <div id="viewport"></div>
 
   <script type="module">
-    import { Gallery } from "./js-gallery.js";
+    import './hammer.min.js';
+    const hammer = new Hammer(document.getElementById('viewport'));
+    hammer.on('tap doubletap press pan swipe pinch rotate', function (ev) {
+      console.log(ev.type);
+    });
 
-    class Main {
-      static run() {
-        new Gallery(document.querySelector('#viewport'), this.cb);
-      }
+    // import { GestureDetector } from './gesture.js';
+    // new GestureDetector(document.querySelector('#viewport'));
 
-      static cb(i) {
-        // return temp[i] ? location.origin + '/image/' + temp[i] : null;
-        // return 'https://placeimg.com/320/240/any?' + Math.random();
-        // return 'image.jpg';
+    // import { Gallery } from "./js-gallery.js";
 
-        const width = 300 + Math.floor(Math.random() * 900);
-        const height = 300 + Math.floor(Math.random() * 900);
-        return `//via.placeholder.com/${width}x${height}/?text=${i}`;
-      }
-    }
+    // class Main {
+    //   static run() {
+    //     new Gallery(document.querySelector('#viewport'), this.cb);
+    //   }
 
-    Main.run();
+    //   static cb(i) {
+    //     // return temp[i] ? location.origin + '/image/' + temp[i] : null;
+    //     // return 'https://placeimg.com/320/240/any?' + Math.random();
+    //     // return 'image.jpg';
+
+    //     const width = 300 + Math.floor(Math.random() * 900);
+    //     const height = 300 + Math.floor(Math.random() * 900);
+    //     return `//via.placeholder.com/${width}x${height}/?text=${i}`;
+    //   }
+    // }
+
+    // Main.run();
   </script>
 </body>
 
